@@ -77,6 +77,30 @@ extension QueryType {
     ///
     /// - Parameters:
     ///
+    ///   - onConflict: Conflict resolution strategy
+    ///
+    ///   - encodables: Encodable objects to insert
+    ///
+    ///   - userInfo: User info to be passed to encoder
+    ///
+    ///   - otherSetters: Any other setters to include in the inserts, per row/object.
+    ///
+    /// - Returns: An `INSERT` statement for the encodable objects
+    public func insertMany(or onConflict: OnConflict, encodables: [Encodable], userInfo: [CodingUserInfoKey: Any] = [:],
+                           otherSetters: [Setter] = []) throws -> Insert {
+        self.insertMany(
+            or: onConflict,
+            try createSymmetricSetters(encodables, userInfo: userInfo, otherSetters: otherSetters)
+        )
+    }
+
+    /// Creates a batch `INSERT` statement by encoding the array of given objects
+    /// This method converts any custom nested types to JSON data and does not handle any sort
+    /// of object relationships. If you want to support relationships between objects you will
+    /// have to provide your own Encodable implementations that encode the correct ids.
+    ///
+    /// - Parameters:
+    ///
     ///   - encodables: Encodable objects to insert
     ///
     ///   - userInfo: User info to be passed to encoder
@@ -86,6 +110,12 @@ extension QueryType {
     /// - Returns: An `INSERT` statement for the encodable objects
     public func insertMany(_ encodables: [Encodable], userInfo: [CodingUserInfoKey: Any] = [:],
                            otherSetters: [Setter] = []) throws -> Insert {
+        self.insertMany(
+            try createSymmetricSetters(encodables, userInfo: userInfo, otherSetters: otherSetters)
+        )
+    }
+
+    private func createSymmetricSetters(_ encodables: [Encodable], userInfo: [CodingUserInfoKey: Any], otherSetters: [Setter]) throws -> [[Setter]] {
         let combinedSettersWithoutNils = try encodables.map { encodable -> [Setter] in
             let encoder = SQLiteEncoder(userInfo: userInfo, forcingNilValueSetters: false)
             try encodable.encode(to: encoder)
@@ -99,9 +129,9 @@ extension QueryType {
                 try encodable.encode(to: encoder)
                 return encoder.setters + otherSetters
             }
-            return self.insertMany(combinedSymmetricSetters)
+            return combinedSymmetricSetters
         }
-        return self.insertMany(combinedSettersWithoutNils)
+        return combinedSettersWithoutNils
     }
 
     /// Creates an `INSERT ON CONFLICT DO UPDATE` statement, aka upsert, by encoding the given object
